@@ -58,7 +58,41 @@ void main()
 		vec2 vPos = particlesA[index].pos.xy;
     vec2 vVel = particlesA[index].vel.xy;
 
+	vec2 cohesionCenter = vec2(0, 0);
+	vec2 velCohesion = vec2(0, 0);
+	vec2 velSeparation = vec2(0, 0);
+	vec2 velAlignment = vec2(0, 0);
+
+	int cohesionCount = 0;
+	for (int i = 0; i < ubo.particleCount; ++i) {
+		if (i == index) {
+			continue;
+		}
+
+		vec2 neighborPos = particlesA[i].pos.xy;
+		float dis = distance(vPos, neighborPos);
+
+		if (dis < ubo.rule1Distance) {
+			cohesionCenter += neighborPos;
+			cohesionCount++;
+		}
+
+		if (dis < ubo.rule2Distance) {
+			velSeparation -= (neighborPos - vPos);
+		}
+
+		if (dis < ubo.rule3Distance) {
+			velAlignment += particlesA[i].vel.xy;
+		}
+	}
+
+	if (cohesionCount > 0) {
+		cohesionCenter /= cohesionCount;
+		velCohesion = (cohesionCenter - vPos);
+	}
+
 		// clamp velocity for a more pleasing simulation.
+		vVel += velCohesion * ubo.rule1Scale + velSeparation * ubo.rule2Scale + velAlignment * ubo.rule3Scale;
 		vVel = normalize(vVel) * clamp(length(vVel), 0.0, 0.1);
 
 		// kinematic update
