@@ -10,6 +10,8 @@ include_directories(external)
 include_directories(external/glm)
 include_directories(external/gli)
 include_directories(base)
+include_directories(vulkanBoids)
+
 
 OPTION(USE_D2D_WSI "Build the project using Direct to Display swapchain" OFF)
 

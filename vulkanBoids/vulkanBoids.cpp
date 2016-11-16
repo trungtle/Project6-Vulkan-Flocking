@@ -34,11 +34,17 @@
 // using a Uniform Buffer. These parameters should yield a stable and pleasing simulation for an
 // implementation based off the code here: http://studio.sketchpad.cc/sp/pad/view/ro.9cbgCRcgbPOI6/rev.23
 #define RULE1DISTANCE 0.1f // cohesion
-#define RULE2DISTANCE 0.01f // separation
+#define RULE2DISTANCE 0.025f // separation
 #define RULE3DISTANCE 0.05f // alignment
-#define RULE1SCALE 0.02f
-#define RULE2SCALE 0.1f
+#define RULE1SCALE 0.12f
+#define RULE2SCALE 0.8f
 #define RULE3SCALE 0.01f
+
+//#define DRAW_POINTS
+
+#define POSITION_BUFFER_BIND_ID 0
+#define NORMAL_BUFFER_BIND_ID 1
+#define INSTANCE_BUFFER_BIND_ID 2
 
 class VulkanExample : public VulkanExampleBase
 {
@@ -141,12 +147,21 @@ public:
 		preparePipelines();
 		setupDescriptorPool();
 		prepareCompute();
+#ifndef DRAW_POINTS
+		createGraphicsDescriptorSet();
+#endif
 		prepared = true;
 	}
 
 	// Setup and fill the compute shader storage buffers containing the particles
 	void prepareStorageBuffers()
 	{
+#ifndef DRAW_POINTS
+		createUniformBuffer();
+		// For loading mesh
+		createVertexBuffer();
+#endif
+
 		// LOOK: generate the buffers CPU-side using a RNG. We'll just do all work in screen space.
 
 		std::mt19937 rGenerator;
@@ -187,13 +202,13 @@ public:
 
 		// These SSBOs will be used as storage buffers for the compute pipeline and as a vertex buffer in the graphics pipeline
 		vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			&compute.storageBufferA,
 			storageBufferSize); // no data from host - not visible to host
 
 		vulkanDevice->createBuffer(
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			&compute.storageBufferB,
 			storageBufferSize);
@@ -255,6 +270,184 @@ public:
 		vertices.inputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertices.attributeDescriptions.size());
 		vertices.inputState.pVertexAttributeDescriptions = vertices.attributeDescriptions.data();
 	}
+	
+	void createBuffer(
+			const VkDeviceSize size,
+			const VkBufferUsageFlags usage,
+			VkBuffer& buffer
+		) const
+	{
+		VkBufferCreateInfo bufferCreateInfo = {};
+		bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferCreateInfo.size = size;
+
+		// For multipurpose buffers, OR the VK_BUFFER_USAGE_ bits together
+		bufferCreateInfo.usage = usage;
+
+		// Buffer is used exclusively by the graphics queue
+		bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VkResult result = vkCreateBuffer(device, &bufferCreateInfo, nullptr, &buffer);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create buffer");
+		}
+	}
+
+	void createMemory(
+		const VkMemoryPropertyFlags memoryProperties,
+		const VkBuffer& buffer,
+		VkDeviceMemory& memory
+	) const
+	{
+		VkMemoryRequirements memoryRequirements = {};
+		vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
+
+		VkMemoryAllocateInfo memoryAllocInfo = {};
+		memoryAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		memoryAllocInfo.allocationSize = memoryRequirements.size;
+
+		// *N.B*
+		// VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT means memory allocated  can be mapped for host access using vkMapMemory
+		// VK_MEMORY_PROPERTY_HOST_COHERENT_BIT ensures mapped memory matches allocated memory. 
+		// Does not require flushing and invalidate cache before reading from mapped memory
+		// VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT uses the device local memorycr
+		memoryAllocInfo.memoryTypeIndex =
+			vulkanDevice->getMemoryType(memoryRequirements.memoryTypeBits,
+				memoryProperties);
+
+		VkResult result = vkAllocateMemory(device, &memoryAllocInfo, nullptr, &memory);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate memory for buffer");
+		}
+	}
+
+	void createUniformBuffer()
+	{
+		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+		VkDeviceSize memoryOffset = 0;
+		createBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			m_uniformStagingBuffer
+		);
+
+		// Allocate memory for the buffer
+		createMemory(
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			m_uniformStagingBuffer,
+			m_uniformStagingBufferMemory
+		);
+
+		// Bind buffer with memory
+		vkBindBufferMemory(device, m_uniformStagingBuffer, m_uniformStagingBufferMemory, memoryOffset);
+
+		createBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			m_uniformBuffer
+		);
+
+		// Allocate memory for the buffer
+		createMemory(
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			m_uniformBuffer,
+			m_uniformBufferMemory
+		);
+
+		// Bind buffer with memory
+		vkBindBufferMemory(device, m_uniformBuffer, m_uniformBufferMemory, memoryOffset);
+	}
+
+
+	void createVertexBuffer()
+	{
+		for (GeometryData* geomData : m_scene->m_geometriesData)
+		{
+			GeometryBuffer geomBuffer;
+
+			// ----------- Vertex attributes --------------
+
+			std::vector<Byte>& indexData = geomData->vertexData.at(INDEX);
+			VkDeviceSize indexBufferSize = sizeof(indexData[0]) * indexData.size();
+			VkDeviceSize indexBufferOffset = 0;
+			std::vector<Byte>& positionData = geomData->vertexData.at(POSITION);
+			VkDeviceSize positionBufferSize = sizeof(positionData[0]) * positionData.size();
+			VkDeviceSize positionBufferOffset = indexBufferSize;
+			std::vector<Byte>& normalData = geomData->vertexData.at(NORMAL);
+			VkDeviceSize normalBufferSize = sizeof(normalData[0]) * normalData.size();
+			VkDeviceSize normalBufferOffset = positionBufferOffset + positionBufferSize;
+
+			VkDeviceSize bufferSize = indexBufferSize + positionBufferSize + normalBufferSize;
+			geomBuffer.bufferLayout.indexBufferOffset = indexBufferOffset;
+			geomBuffer.bufferLayout.vertexBufferOffsets.insert(std::make_pair(POSITION, positionBufferOffset));
+			geomBuffer.bufferLayout.vertexBufferOffsets.insert(std::make_pair(NORMAL, normalBufferOffset));
+
+			// Stage buffer memory on host
+			// We want staging so that we can map the vertex data on the host but
+			// then transfer it to the device local memory for faster performance
+			// This is the recommended way to allocate buffer memory,
+			VkBuffer stagingBuffer;
+			VkDeviceMemory stagingBufferMemory;
+
+			createBuffer(
+				bufferSize,
+				VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+				stagingBuffer
+			);
+
+			// Allocate memory for the buffer
+			createMemory(
+				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+				stagingBuffer,
+				stagingBufferMemory
+			);
+
+			// Bind buffer with memory
+			VkDeviceSize memoryOffset = 0;
+			vkBindBufferMemory(device, stagingBuffer, stagingBufferMemory, memoryOffset);
+
+			// Filling the stage buffer with data
+			void* data;
+			vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+			memcpy(data, indexData.data(), static_cast<size_t>(indexBufferSize));
+			memcpy((Byte*)data + positionBufferOffset, positionData.data(), static_cast<size_t>(positionBufferSize));
+			memcpy((Byte*)data + normalBufferOffset, normalData.data(), static_cast<size_t>(normalBufferSize));
+			vkUnmapMemory(device, stagingBufferMemory);
+
+			// -----------------------------------------
+
+			createBuffer(
+				bufferSize,
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+				geomBuffer.vertexBuffer
+			);
+
+			// Allocate memory for the buffer
+			createMemory(
+				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+				geomBuffer.vertexBuffer,
+				geomBuffer.vertexBufferMemory
+			);
+
+			// Bind buffer with memory
+			vkBindBufferMemory(device, geomBuffer.vertexBuffer, geomBuffer.vertexBufferMemory, memoryOffset);
+
+			// Copy over to vertex buffer in device local memory
+			VkCommandBuffer copyCmd = VulkanExampleBase::createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+			VkBufferCopy copyRegion = {};
+			copyRegion.size = bufferSize;
+			vkCmdCopyBuffer(copyCmd, stagingBuffer, geomBuffer.vertexBuffer, 1, &copyRegion);
+			VulkanExampleBase::flushCommandBuffer(copyCmd, queue, true);
+
+			// Cleanup staging buffer memory
+			vkDestroyBuffer(device, stagingBuffer, nullptr);
+			vkFreeMemory(device, stagingBufferMemory, nullptr);
+
+			m_geometryBuffers.push_back(geomBuffer);
+		}
+	}
 
 	// Prepare and initialize uniform buffer containing shader uniforms for compute
 	void prepareUniformBuffers()
@@ -281,7 +474,18 @@ public:
 			setLayoutBindings.data(),
 			static_cast<uint32_t>(setLayoutBindings.size()));
 
-		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorLayout, nullptr, &graphics.descriptorSetLayout));
+		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboLayoutBinding.descriptorCount = 1;
+		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &uboLayoutBinding;
+
+		VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &graphics.descriptorSetLayout));
 
 		VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo =
 			vkTools::initializers::pipelineLayoutCreateInfo(
@@ -298,7 +502,11 @@ public:
 		// dscribe a bunch of pipeline state
 		VkPipelineInputAssemblyStateCreateInfo inputAssemblyState =
 			vkTools::initializers::pipelineInputAssemblyStateCreateInfo(
+#if defined(DRAW_POINTS)
 			VK_PRIMITIVE_TOPOLOGY_POINT_LIST,
+#else
+			VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+#endif
 			0,
 			VK_FALSE);
 
@@ -319,12 +527,20 @@ public:
 			1,
 			&blendAttachmentState);
 
+#ifndef DRAW_POINTS
+
 		VkPipelineDepthStencilStateCreateInfo depthStencilState =
 			vkTools::initializers::pipelineDepthStencilStateCreateInfo(
-			VK_FALSE,
-			VK_FALSE,
-			VK_COMPARE_OP_ALWAYS);
-
+			VK_TRUE,
+			VK_TRUE,
+			VK_COMPARE_OP_LESS);
+#else
+		VkPipelineDepthStencilStateCreateInfo depthStencilState =
+			vkTools::initializers::pipelineDepthStencilStateCreateInfo(
+				VK_FALSE,
+				VK_FALSE,
+				VK_COMPARE_OP_ALWAYS);
+#endif
 		VkPipelineViewportStateCreateInfo viewportState =
 			vkTools::initializers::pipelineViewportStateCreateInfo(1, 1, 0);
 
@@ -347,8 +563,13 @@ public:
 		// LOOK: Load shaders. These are the spirv shaders, not the glsl!
 		std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages;
 
+#ifdef DRAW_POINTS
 		shaderStages[0] = loadShader(getAssetPath() + "shaders/computeparticles/particle.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
 		shaderStages[1] = loadShader(getAssetPath() + "shaders/computeparticles/particle.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+#else
+		shaderStages[0] = loadShader(getAssetPath() + "shaders/draw/draw.vert.spv", VK_SHADER_STAGE_VERTEX_BIT);
+		shaderStages[1] = loadShader(getAssetPath() + "shaders/draw/draw.frag.spv", VK_SHADER_STAGE_FRAGMENT_BIT);
+#endif
 
 		VkGraphicsPipelineCreateInfo pipelineCreateInfo =
 			vkTools::initializers::pipelineCreateInfo(
@@ -356,9 +577,30 @@ public:
 			renderPass,
 			0);
 
+		VkPipelineVertexInputStateCreateInfo vertexInputStageCreateInfo = {};
+		vertexInputStageCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+		// Input binding description
+		VkVertexInputBindingDescription bindingDesc[3] = {
+			GetVertexInputBindingDescription(POSITION_BUFFER_BIND_ID, m_scene->m_geometriesData[0]->vertexAttributes.at(POSITION)),
+			GetVertexInputBindingDescription(NORMAL_BUFFER_BIND_ID, m_scene->m_geometriesData[0]->vertexAttributes.at(NORMAL)), 
+			vkTools::initializers::vertexInputBindingDescription(INSTANCE_BUFFER_BIND_ID, sizeof(Particle), VK_VERTEX_INPUT_RATE_INSTANCE)
+		};
+		vertexInputStageCreateInfo.vertexBindingDescriptionCount = 3;
+		vertexInputStageCreateInfo.pVertexBindingDescriptions = bindingDesc;
+
+		// Attribute description (position, normal, texcoord etc.)
+		auto vertAttribDesc = GetAttributeDescriptions();
+		vertexInputStageCreateInfo.vertexAttributeDescriptionCount = vertAttribDesc.size();
+		vertexInputStageCreateInfo.pVertexAttributeDescriptions = vertAttribDesc.data();
+
 		// LOOK: set the pipeline up to interface with our buffers using the
 		// inputState from prepareStorageBuffers()
+#ifdef DRAW_POINTS
 		pipelineCreateInfo.pVertexInputState = &vertices.inputState; // indicate to pipeline how to use vertex buffer.
+#else
+		pipelineCreateInfo.pVertexInputState = &vertexInputStageCreateInfo;
+#endif
 		pipelineCreateInfo.pInputAssemblyState = &inputAssemblyState; // speculation: is this b/c on some GPUs, vertex buffer input is still semi-fixed-function?
 		pipelineCreateInfo.pRasterizationState = &rasterizationState;
 		pipelineCreateInfo.pColorBlendState = &colorBlendState;
@@ -402,6 +644,40 @@ public:
 
 		VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolInfo, nullptr, &descriptorPool));
 	}
+
+	void createGraphicsDescriptorSet()
+	{
+
+		VkDescriptorSetAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &graphics.descriptorSetLayout;
+
+		VkResult result = vkAllocateDescriptorSets(device, &allocInfo, &graphics.descriptorSet);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create descriptor set");
+		}
+
+		VkDescriptorBufferInfo bufferInfo = {};
+		bufferInfo.buffer = m_uniformBuffer;
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(UniformBufferObject);
+
+		// Update descriptor set info
+		VkWriteDescriptorSet descriptorWrite = {};
+		descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite.dstSet = graphics.descriptorSet;
+		descriptorWrite.dstBinding = 0;
+		descriptorWrite.dstArrayElement = 0; // descriptor set could be an array
+		descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		descriptorWrite.descriptorCount = 1;
+		descriptorWrite.pBufferInfo = &bufferInfo;
+
+		vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);
+	}
+
 
 	// LOOK: prepare how to interface with the compute pipeline and the pipeline itself.
 	// Read through all comments in this function.
@@ -675,18 +951,22 @@ public:
 				GeometryBuffer& geomBuffer = m_geometryBuffers[b];
 
 				// Bind vertex buffer
-				VkBuffer vertexBuffers[] = { geomBuffer.vertexBuffer.buffer, geomBuffer.vertexBuffer.buffer };
+				VkBuffer vertexBuffers[] = { geomBuffer.vertexBuffer, geomBuffer.vertexBuffer };
 				VkDeviceSize offsets[] = { geomBuffer.bufferLayout.vertexBufferOffsets.at(POSITION), geomBuffer.bufferLayout.vertexBufferOffsets.at(NORMAL) };
-				vkCmdBindVertexBuffers(drawCmdBuffers[i], 0, 2, vertexBuffers, offsets);
+				vkCmdBindVertexBuffers(drawCmdBuffers[i], POSITION_BUFFER_BIND_ID, 2, vertexBuffers, offsets);
+
+				// Bind instance buffer
+				VkDeviceSize instanceBufferOffsets[] = { 0 }; 
+				vkCmdBindVertexBuffers(drawCmdBuffers[i], INSTANCE_BUFFER_BIND_ID, 1, &compute.storageBufferB.buffer, instanceBufferOffsets);
 
 				// Bind index buffer
-				vkCmdBindIndexBuffer(drawCmdBuffers[i], geomBuffer.vertexBuffer.buffer, geomBuffer.bufferLayout.indexBufferOffset, VK_INDEX_TYPE_UINT16);
+				vkCmdBindIndexBuffer(drawCmdBuffers[i], geomBuffer.vertexBuffer, geomBuffer.bufferLayout.indexBufferOffset, VK_INDEX_TYPE_UINT16);
 
 				// Bind uniform buffer
 				vkCmdBindDescriptorSets(drawCmdBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics.pipelineLayout, 0, 1, &graphics.descriptorSet, 0, nullptr);
 
 				// Record draw command for the triangle!
-				vkCmdDrawIndexed(drawCmdBuffers[i], m_scene->m_geometriesData[b]->vertexAttributes.at(INDEX).count, 1, 0, 0, 0);
+				vkCmdDrawIndexed(drawCmdBuffers[i], m_scene->m_geometriesData[b]->vertexAttributes.at(INDEX).count, PARTICLE_COUNT, 0, 0, 0);
 			}
 #endif
 
@@ -784,6 +1064,36 @@ public:
 		memcpy(compute.uniformBuffer.mapped, &compute.ubo, sizeof(compute.ubo));
 
 		// mousePos can be used to access mouse position on screen
+
+#ifndef DRAW_POINTS
+		// Update graphics
+		static auto startTime = std::chrono::high_resolution_clock::now();
+
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float timeSeconds = std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() / 1000.0f;
+		timeSeconds = 0.0f;
+
+		UniformBufferObject ubo = {};
+		ubo.model = glm::rotate(glm::mat4(1.0f), timeSeconds * glm::radians(60.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
+			glm::scale(glm::mat4(1.0f), glm::vec3(0.01, 0.01, 0.01));
+		ubo.view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.3f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		ubo.proj = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.01f, 10000.0f);
+
+		// The Vulkan's Y coordinate is flipp ed from OpenGL (glm design), so we need to invert that
+		ubo.proj[1][1] *= -1;
+
+		void* data;
+		vkMapMemory(device, m_uniformStagingBufferMemory, 0, sizeof(UniformBufferObject), 0, &data);
+		memcpy(data, &ubo, sizeof(UniformBufferObject));
+		vkUnmapMemory(device, m_uniformStagingBufferMemory);
+
+		// Copy over to vertex buffer in device local memory
+		VkCommandBuffer copyCmd = VulkanExampleBase::createCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+		VkBufferCopy copyRegion = {};
+		copyRegion.size = sizeof(UniformBufferObject);
+		vkCmdCopyBuffer(copyCmd, m_uniformStagingBuffer, m_uniformBuffer, 1, &copyRegion);
+		VulkanExampleBase::flushCommandBuffer(copyCmd, queue, true);
+#endif
 	}
 
 	virtual void render()

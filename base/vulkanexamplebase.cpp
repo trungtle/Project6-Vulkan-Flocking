@@ -523,6 +523,9 @@ VulkanExampleBase::VulkanExampleBase(bool enableValidation, PFN_GetEnabledFeatur
 	// Android Vulkan initialization is handled in APP_CMD_INIT_WINDOW event
 	initVulkan(enableValidation);
 #endif
+
+	// Create scene
+	m_scene = new Scene(getAssetPath() + "gltfs/Duck/duck.gltf");
 }
 
 VulkanExampleBase::~VulkanExampleBase()

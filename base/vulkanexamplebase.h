@@ -37,6 +37,7 @@
 #include "vulkanTextureLoader.hpp"
 #include "vulkantextoverlay.hpp"
 #include "camera.hpp"
+#include "scene.h"
 
 // Function pointer for getting physical device fetures to be enabled
 typedef VkPhysicalDeviceFeatures (*PFN_GetEnabledFeatures)();
@@ -163,6 +164,18 @@ public:
 
 	std::string title = "Vulkan Example";
 	std::string name = "vulkanExample";
+
+	Scene* m_scene;
+
+	std::vector<GeometryBuffer> m_geometryBuffers;
+
+	/**
+	* \brief Uniform buffers
+	*/
+	VkBuffer m_uniformStagingBuffer;
+	VkBuffer m_uniformBuffer;
+	VkDeviceMemory m_uniformStagingBufferMemory;
+	VkDeviceMemory m_uniformBufferMemory;
 
 	struct 
 	{
