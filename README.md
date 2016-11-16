@@ -8,13 +8,13 @@ Vulkan Flocking: compute and shading in one pipeline!
 
 ![](images/vulkan_duck_flock.gif)
 
-DUCKS!
+**THERE SHALL BE DUCKS!**
 
 ### Features
 
 _`#define DRAW_POINTS` is used to toggle between drawing just points or drawing the duck's mesh_
 
-On top of the naive flocking, I implemented gtTF mesh loading using tinygltfloader and enabled instancing to draw the duckies. Enjoy!
+On top of the naive flocking, I implemented gtTF mesh loading using tinygltfloader and enabled instancing to draw the duckies. This required some code restructuring to support mesh and instancing. Enjoy!
 
 ### Analysis
 
@@ -42,3 +42,4 @@ By using compute commands that can share data with the rendering pipeline, we ca
 ### Credits
 
 * [Vulkan examples and demos](https://github.com/SaschaWillems/Vulkan) by [@SaschaWillems](https://github.com/SaschaWillems)
+* [tinygltfloader](https://github.com/syoyo/tinygltfloader) by [@soyoyo](https://github.com/syoyo)
