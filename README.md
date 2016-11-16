@@ -6,9 +6,19 @@ Vulkan Flocking: compute and shading in one pipeline!
 * Trung Le
 * Windows 10 Home, i7-4790 CPU @ 3.60GHz 12GB, GTX 980 Ti (Personal desktop)
 
-![](images/vulkan_flock.gif)
+![](images/vulkan_duck_flock.gif)
+
+DUCKS!
+
+### Features
+
+_`#define DRAW_POINTS` is used to toggle between drawing just points or drawing the duck's mesh_
+
+On top of the naive flocking, I implemented gtTF mesh loading using tinygltfloader and enabled instancing to draw the duckies. Enjoy!
 
 ### Analysis
+
+![](images/vulkan_flock.gif)
 
 
 - Why do you think Vulkan expects explicit descriptors for things like generating pipelines and commands? HINT: this may relate to something in the comments about some components using pre-allocated GPU memory.
