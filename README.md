@@ -14,7 +14,7 @@ Vulkan Flocking: compute and shading in one pipeline!
 
 _`#define DRAW_POINTS` is used to toggle between drawing just points or drawing the duck's mesh_
 
-On top of the naive flocking, I implemented gtTF mesh loading using tinygltfloader and enabled instancing to draw the duckies. This required some code restructuring to support mesh and instancing. Enjoy!
+On top of the naive flocking, I implemented gtTF mesh loading using tinygltfloader and enabled instancing to draw the duckies. This required some code restructuring to support mesh and instancing. Since Vulkan allows for compute and graphics to share data, I simply just used storageBufferB data as the instancing attribute for the mesh's center. Enjoy!
 
 ### Analysis
 
