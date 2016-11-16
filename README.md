@@ -3,13 +3,31 @@ Vulkan Flocking: compute and shading in one pipeline!
 
 **University of Pennsylvania, CIS 565: GPU Programming and Architecture, Project 6**
 
-* (TODO) YOUR NAME HERE
-  Windows 22, i7-2222 @ 2.22GHz 22GB, GTX 222 222MB (Moore 2222 Lab)
+* Trung Le
+* Windows 10 Home, i7-4790 CPU @ 3.60GHz 12GB, GTX 980 Ti (Personal desktop)
 
-  ### (TODO: Your README)
+![](images/vulkan_flock.gif)
 
-  Include screenshots, analysis, etc. (Remember, this is public, so don't put
-  anything here that you don't want to share with the world.)
+### Analysis
+
+
+- Why do you think Vulkan expects explicit descriptors for things like generating pipelines and commands? HINT: this may relate to something in the comments about some components using pre-allocated GPU memory.
+
+The descriptor layout uses a register array with pre-allocated GPU memory. By being able to specify explicit descriptors, developers can assign descriptor sets binding more effeciently, instead of relying on the driver (as in OpenGL), to copy this register array over everytime one of the binding changes, reducing less overheading in resource binding.
+
+- Describe a situation besides flip-flop buffers in which you may need multiple descriptor sets to fit one descriptor layout.
+
+Swaping textures. Let's say we have a lists of textures for a specific mesh, this list can be bound to a list of descriptor sets in a descriptor layout. When the mesh needs to update its texture, the descriptor set can be swapped to so that the shader can read from a new texture.
+
+- What are some problems to keep in mind when using multiple Vulkan queues? 
+	- take into consideration that different queues may be backed by different hardware
+	- take into consideration that the same buffer may be used across multiple queues
+
+Since Vulkan only has one graphics queue (graphics queue queue can perform compute function also, but it doesn't have to) but multiple compute queue, we should strategize the workload so that most of the computation can be carried out in the compute queue. Also, since a buffer might be potentially accessed from different queues in parallel, extra caution needs to be done to guard against this. Adding resource access masks (load, store op) and `VkSemaphore` can help prevent this read/write concurrency problem.
+
+- What is one advantage of using compute commands that can share data with a rendering pipeline?
+
+By using compute commands that can share data with the rendering pipeline, we can avoid unncessary memory transfer from device and host. In a CUDA pipeline, the compute data needs to be copied to host, then copied back into the graphics pipeline. This overhead can now be eliminated with Vulkan.
 
 ### Credits
 
